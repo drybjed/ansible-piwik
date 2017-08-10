@@ -1,0 +1,18 @@
+---
+
+ansigenome_info:
+  github_url: 'https://github.com/betamachine/ansible-piwik'
+  git_branch: 'master'
+
+  travis: True
+
+  authors:
+    - name:  'Julien Peeters'
+      email: 'contact@julienpeeters.net'
+      twitter: 'julien2peeters'
+      github: 'jpeeters'
+
+  synopsis: |
+    This role installs a [Piwik](https://piwik.org/) instance on a
+    specified host, with MariaDB database as a backend and an nginx webserver
+    as a frontend.

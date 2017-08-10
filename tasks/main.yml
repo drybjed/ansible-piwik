@@ -1,0 +1,59 @@
+---
+
+- name: Install requested packages
+  apt:
+    name: '{{ item }}'
+    state: present
+    install_recommends: False
+  with_flattened:
+    - '{{ piwik__base_packages }}'
+    - '{{ piwik__packages }}'
+
+- name: Create piwik group
+  group:
+    name: '{{ piwik__group }}'
+    system: True
+    state: present
+
+- name: Create piwik user
+  user:
+    name: '{{ piwik__user }}'
+    group: '{{ piwik__group }}'
+    home: '{{ piwik__home_directory }}'
+    shell: '/bin/false'
+    comment: 'piwik'
+    createhome: False
+    system: True
+    state: present
+
+- name: Create home directory if different from www.
+  file:
+    path: '{{ piwik__home_directory }}'
+    state: 'directory'
+    owner: '{{ piwik__user }}'
+    group: '{{ piwik__group }}'
+    mode: 0750
+  when: piwik__home_directory != piwik__www_directory
+
+- name: Create www directory
+  file:
+    path: '{{ piwik__www_directory }}'
+    state: 'directory'
+    owner: '{{ piwik__user }}'
+    group: '{{ piwik__group }}'
+    mode: 0750
+
+- name: Check if sources are already downloaded.
+  stat:
+    path: '{{ piwik__www_directory }}/piwik.php'
+  register: piwik__downloaded
+
+- name: Install piwik website.
+  unarchive:
+    src: '{{ piwik__source_url }}'
+    dest: '{{ piwik__www_directory }}'
+    extra_opts: [ '--strip-components=1' ]
+    owner: '{{ piwik__user }}'
+    group: '{{ piwik__group }}'
+    remote_src: True
+  when: not piwik__downloaded.stat.exists

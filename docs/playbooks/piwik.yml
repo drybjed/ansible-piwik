@@ -1,0 +1,49 @@
+---
+
+- name: Manage Piwik
+  hosts: [ 'debops_service_piwik', 'debops_piwik' ]
+  become: True
+
+  environment: '{{ inventory__environment | d({})
+                 | combine(inventory__group_environment | d({}))
+                 | combine(inventory__host_environment | d({})) }}'
+
+  roles:
+
+    - role: debops.php/env
+      tags: [ 'role::php', 'role::logrotate' ]
+
+    - role: debops.apt_preferences
+      tags: [ 'role::apt_preferences' ]
+      apt_preferences__dependent_list:
+        - '{{ php__apt_preferences__dependent_list }}'
+        - '{{ nginx__apt_preferences__dependent_list }}'
+
+    - role: debops.logrotate
+      tags: [ 'role::logrotate' ]
+      logrotate__dependent_config:
+        - '{{ php__logrotate__dependent_config }}'
+
+    - role: debops.php
+      tags: [ 'role::php' ]
+      php__dependent_packages:
+        - '{{ piwik__php__dependent_packages }}'
+      php__dependent_pools:
+        - '{{ piwik__php__dependent_pools }}'
+
+    - role: debops.nginx
+      tags: [ 'role::nginx' ]
+      nginx__dependent_upstreams:
+        - '{{ piwik__nginx__dependent_upstreams }}'
+      nginx__dependent_servers:
+        - '{{ piwik__nginx__dependent_servers }}'
+
+    - role: debops.mariadb
+      tags: [ 'role::mariadb' ]
+      mariadb__dependent_users:
+        - '{{ piwik__mariadb__dependent_users }}'
+      mariadb__dependent_databases:
+        - '{{ piwik__mariadb__dependent_databases }}'
+
+    - role: debops.piwik
+      tags: [ 'role::piwik' ]

@@ -1,0 +1,314 @@
+---
+
+# .. vim: foldmarker=[[[,]]]:foldmethod=marker
+
+# debops.piwik default variables [[[
+# ==================================
+
+# .. contents:: Sections
+#    :local:
+#
+# .. include:: includes/all.rst
+
+
+# Basic configuration options [[[
+# -------------------------------
+
+# .. envvar:: piwik__site_domain [[[
+#
+# Default domain that will be used to host the forum instance.
+piwik__site_domain: 'analytics.{{ ansible_domain }}'
+
+# ]]]
+
+# .. envvar:: piwik__site_domains [[[
+#
+# Defines domaines that respond to requests.
+piwik__site_domains: [ '{{ piwik__site_domain }}' ]
+
+# ]]]
+
+# .. envvar:: piwik__pki_realm [[[
+#
+# Defines the PKI realm for this instance.
+piwik__pki_realm: '{{ piwik__site_domains[0] }}'
+
+# ]]]
+
+# ]]]
+
+# User, group and app directories [[[
+# -----------------------------------
+
+# .. envvar:: piwik__user [[[
+#
+# piwik system user account.
+piwik__user: 'piwik'
+
+# ]]]
+
+# .. envvar:: piwik__group [[[
+#
+# piwik system user group.
+piwik__group: '{{ ansible_local.nginx.group
+                      if (ansible_local|d() and ansible_local.nginx|d() and
+                          ansible_local.nginx.group|d())
+                      else "www-data" }}'
+
+# ]]]
+
+# .. envvar:: piwik__www_directory [[[
+#
+# Base root web directory for piwik website.
+piwik__www_directory: '{{ (ansible_local.nginx.www
+                           if (ansible_local|d() and ansible_local.nginx|d() and
+                               ansible_local.nginx.www|d())
+                           else "/srv/www") + "/sites/" + piwik__site_domain }}'
+
+# ]]]
+
+# .. envvar:: piwik__home_directory [[[
+#
+# Default home directory for piwik sources.
+piwik__home_directory: '{{ piwik__www_directory }}'
+
+# ]]]
+
+# .. envvar:: piwik__source_version [[[
+#
+# piwik source version.
+piwik__source_version: '3.0.4'
+
+# ]]]
+
+# .. envvar:: piwik__source_url [[[
+#
+# piwik source url.
+piwik__source_url: 'https://builds.piwik.org/piwik-{{ piwik__source_version }}.tar.gz'
+
+# ]]]
+
+# .. envvar:: piwik__max_file_size [[[
+#
+# The maximum size of any acceptable file or upload in MB.
+piwik__max_file_size: '30'
+
+# ]]]
+
+# .. envvar:: piwik__admin_user [[[
+#
+# Defines the administrator user name.
+piwik__admin_user: '{{ piwik__user }}'
+
+# ]]]
+
+# .. envvar:: piwik__admin_email [[[
+#
+# Defines the administrator email.
+piwik__admin_email: '{{ piwik__user }}@{{ piwik__site_domains[0] }}'
+
+# ]]]
+
+# .. envvar:: piwik__admin_password [[[
+#
+# piwik admin interface user password.
+piwik__admin_password: '{{ lookup("password", secret + "/piwik/" +
+                                 ansible_fqdn + "/credentials/" +
+                                 piwik__admin_user + "/password length=" +
+                                 piwik__admin_password_length) }}'
+
+# ]]]
+
+# .. envvar:: piwik__admin_password_length [[[
+#
+# Defines the administrator default password length.
+piwik__admin_password_length: '20'
+
+# ]]]
+
+# ]]]
+
+# Dependent packages [[[
+# ----------------------
+
+# .. envvar:: piwik__base_packages [[[
+#
+# piwik base packages to install prior to installation.
+piwik__base_packages: []
+
+# ]]]
+
+# .. envvar:: piwik__packages [[[
+#
+# piwik additional packages to install prior to installation.
+piwik__packages: []
+
+# ]]]
+
+# ]]]
+
+# PHP configuration [[[
+# ---------------------
+
+# .. envvar:: piwik__php__dependent_packages [[[
+#
+# List of PHP packages to install using debops.php_ role.
+piwik__php__dependent_packages:
+
+  - [ 'curl', 'gd', 'mysql' ]
+
+# ]]]
+
+# .. envvar:: piwik__php__dependent_pools [[[
+#
+# Configuration of the piwik PHP-FPM pool managed by the debops.php_ role.
+piwik__php__dependent_pools:
+
+  - name: 'piwik'
+    user: '{{ piwik__user }}'
+    group: '{{ piwik__group }}'
+
+    php_admin_values:
+      post_max_size:       '{{ piwik__max_file_size }}M'
+      upload_max_filesize: '{{ piwik__max_file_size }}M'
+      always_populate_raw_post_data: '-1'
+
+# ]]]
+
+# ]]]
+
+# NGinx configuration [[[
+# -----------------------
+
+# .. envvar:: piwik__nginx__vhost_filename [[[
+#
+# Default nginx filename
+piwik__nginx__vhost_filename: 'debops.piwik'
+
+# ]]]
+
+# .. envvar:: piwik__nginx__dependent_upstreams [[[
+#
+# Configuration of nginx upstream for piwik.
+piwik__nginx__dependent_upstreams:
+
+  - name: 'php_piwik'
+    type: 'php'
+    php_pool: 'piwik'
+
+# ]]]
+
+# .. envvar:: piwik__nginx__dependent_servers [[[
+#
+# Configuration of nginx server for piwik.
+piwik__nginx__dependent_servers:
+
+  - name: '{{ piwik__site_domains | join(" ") }}'
+    filename: '{{ piwik__nginx__vhost_filename }}'
+    by_role: 'debops.piwik'
+    type: 'php'
+    root: '{{ piwik__www_directory }}'
+    index: 'index.php'
+
+    pki_realm: '{{ piwik__pki_realm }}'
+
+    options: |
+      autoindex off;
+      client_max_body_size {{ piwik__max_file_size }}M;
+      client_body_buffer_size 128k;
+
+    location:
+
+      '/': |
+        try_files $uri $uri/ /index.php?$args;
+
+      '~* ^/(?:index|piwik)\.php$$': |
+        include fastcgi_params;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass php_piwik;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+
+      '~* ^.+\.php$': |
+        return 404;
+
+      '~* ^/(?:README|LICENSE[^.]*|LEGALNOTICE)(?:\.txt)*$': |
+        return 404;
+
+      '~* \.(js|css|png|jpg|jpeg|gif|ico)$': |
+        expires max;
+        log_not_found off;
+
+      '~ /\.svn|/\.git': |
+        deny all;
+        internal;
+
+# ]]]
+
+# ]]]
+
+# MariaDB configuration [[[
+# ----------------------------
+
+# .. envvar:: piwik__mariadb__db_name [[[
+#
+# Sets the mariadb database name
+piwik__mariadb__db_name: 'piwik_production'
+
+# ]]]
+
+# .. envvar:: piwik__mariadb__db_user [[[
+#
+# Sets the mariadb db user
+piwik__mariadb__db_user: '{{ piwik__user }}'
+
+# ]]]
+
+# .. envvar:: piwik__mariadb__db_password [[[
+#
+# Sets the mariadb db password
+piwik__mariadb__db_password: '{{ lookup("password", secret + "/mariadb/" +
+                                    (ansible_local.mariadb.delegate_to
+                                     if (ansible_local|d() and ansible_local.mariadb|d() and
+                                         ansible_local.mariadb.delegate_to|d())
+                                     else "localhost") + "/credentials/" +
+                                    piwik__mariadb__db_user + "/password" +
+                                    " chars=ascii_letters,hexdigits,^!#?*@ length=" +
+                                     piwik__mariadb__db_password_length) }}'
+
+# ]]]
+
+# .. envvar:: piwik__mariadb__db_password_length [[[
+#
+# Sets the mariadb table prefix
+piwik__mariadb__db_password_length: '40'
+
+# ]]]
+
+# .. envvar:: piwik__mariadb__db_prefix [[[
+#
+# Sets the mariadb table prefix
+piwik__mariadb__db_prefix: 'wp_'
+
+# ]]]
+
+# .. envvar:: piwik__mariadb__dependent_users [[[
+#
+# Sets the mariadb dependent roles
+piwik__mariadb__dependent_users:
+  - name: '{{ piwik__mariadb__db_user }}'
+    database: '{{ piwik__mariadb__db_name }}'
+    password: '{{ piwik__mariadb__db_password }}'
+    priv_aux: False
+
+# ]]]
+
+# .. envvar:: piwik__mariadb__dependent_databases [[[
+#
+# Sets the mariadb db user
+piwik__mariadb__dependent_databases:
+  - name: '{{ piwik__mariadb__db_name }}'
+
+# ]]]
+
+# ]]]
